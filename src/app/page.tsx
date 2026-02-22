@@ -31,7 +31,7 @@ const mockMaterials: Material[] = [
   {
     id: '1',
     title: '设计思维的核心原则',
-    content: '以用户为中心，快速原型迭代，拥抱失败...',
+    content: '以用户为中心，快速原型迭代，拥抱失败。设计思维是一种以人为本的创新方法，它借鉴了设计师的工具和方法，将用户需求、技术可行性和商业成功结合起来。核心原则包括：同理心、定义问题、创意构思、原型制作和测试验证。',
     category: 'article',
     tags: ['设计', '方法论'],
     createdAt: new Date(Date.now() - 1000 * 60 * 30),
@@ -41,7 +41,7 @@ const mockMaterials: Material[] = [
   {
     id: '2',
     title: '产品开发灵感',
-    content: '可以做一个结合AI的资料整理工具...',
+    content: '可以做一个结合AI的资料整理工具。用户在浏览网页、阅读文章时，可以快速收集有价值的内容，通过AI自动分类和标签化，让零散的信息变成有序的知识库。',
     category: 'idea',
     tags: ['产品', 'AI'],
     createdAt: new Date(Date.now() - 1000 * 60 * 60 * 2),
@@ -51,7 +51,7 @@ const mockMaterials: Material[] = [
   {
     id: '3',
     title: '"简单是复杂的终极形式"',
-    content: '达芬奇说过，简约不是少，而是没有多余',
+    content: '达芬奇说过，简约不是少，而是没有多余。这句话深刻地揭示了设计的本质——好的设计不是简单地减少元素，而是通过精心的筛选和组合，保留最核心、最有价值的部分。',
     category: 'quote',
     tags: ['名言', '设计哲学'],
     createdAt: new Date(Date.now() - 1000 * 60 * 60 * 5),
@@ -61,7 +61,7 @@ const mockMaterials: Material[] = [
   {
     id: '4',
     title: 'React最佳实践文章',
-    content: 'https://react.dev/learn/thinking-in-react',
+    content: 'https://react.dev/learn/thinking-in-react\n\n这篇文章详细介绍了React的组件化思维，包括如何将UI拆分为组件层级、用React构建静态版本、找出UI最简完整state的表示、让state在哪声明等关键步骤。',
     category: 'link',
     tags: ['技术', 'React'],
     createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24),
@@ -99,6 +99,31 @@ function loadInitialMaterials(): Material[] {
   return mockMaterials
 }
 
+// 格式化时间
+function formatTime(date: Date) {
+  const now = new Date()
+  const diff = now.getTime() - date.getTime()
+  const minutes = Math.floor(diff / (1000 * 60))
+  const hours = Math.floor(diff / (1000 * 60 * 60))
+  const days = Math.floor(diff / (1000 * 60 * 60 * 24))
+  
+  if (minutes < 60) return `${minutes}分钟前`
+  if (hours < 24) return `${hours}小时前`
+  if (days < 7) return `${days}天前`
+  return date.toLocaleDateString('zh-CN')
+}
+
+// 格式化完整日期
+function formatFullDate(date: Date) {
+  return date.toLocaleString('zh-CN', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  })
+}
+
 export default function Home() {
   const [activeTab, setActiveTab] = useState('home')
   const [materials, setMaterials] = useState<Material[]>(loadInitialMaterials)
@@ -108,24 +133,17 @@ export default function Home() {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
   const [showInstallBanner, setShowInstallBanner] = useState(true)
   const { isInstalled, canInstall, install } = usePWA()
+  
+  // 详情页相关状态
+  const [selectedMaterial, setSelectedMaterial] = useState<Material | null>(null)
+  const [isEditing, setIsEditing] = useState(false)
+  const [editContent, setEditContent] = useState({ title: '', content: '' })
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
 
   // 保存到本地存储
   useEffect(() => {
     localStorage.setItem('materials', JSON.stringify(materials))
   }, [materials])
-
-  // 格式化时间
-  const formatTime = (date: Date) => {
-    const now = new Date()
-    const diff = now.getTime() - date.getTime()
-    const minutes = Math.floor(diff / (1000 * 60))
-    const hours = Math.floor(diff / (1000 * 60 * 60))
-    const days = Math.floor(diff / (1000 * 60 * 60 * 24))
-    
-    if (minutes < 60) return `${minutes}分钟前`
-    if (hours < 24) return `${hours}小时前`
-    return `${days}天前`
-  }
 
   // 添加新资料
   const handleAdd = () => {
@@ -147,10 +165,45 @@ export default function Home() {
   }
 
   // 切换收藏
-  const toggleFavorite = (id: string) => {
+  const toggleFavorite = (id: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation()
     setMaterials(materials.map(m => 
       m.id === id ? { ...m, isFavorite: !m.isFavorite } : m
     ))
+    // 如果是在详情页，也更新selectedMaterial
+    if (selectedMaterial?.id === id) {
+      setSelectedMaterial({ ...selectedMaterial, isFavorite: !selectedMaterial.isFavorite })
+    }
+  }
+
+  // 删除资料
+  const handleDelete = (id: string) => {
+    setMaterials(materials.filter(m => m.id !== id))
+    setSelectedMaterial(null)
+    setShowDeleteConfirm(false)
+  }
+
+  // 编辑资料
+  const handleEdit = () => {
+    if (!selectedMaterial) return
+    setMaterials(materials.map(m => 
+      m.id === selectedMaterial.id 
+        ? { ...m, title: editContent.title, content: editContent.content }
+        : m
+    ))
+    setSelectedMaterial({ 
+      ...selectedMaterial, 
+      title: editContent.title, 
+      content: editContent.content 
+    })
+    setIsEditing(false)
+  }
+
+  // 打开详情
+  const openDetail = (material: Material) => {
+    setSelectedMaterial(material)
+    setEditContent({ title: material.title, content: material.content })
+    setIsEditing(false)
   }
 
   // 过滤资料
@@ -161,6 +214,223 @@ export default function Home() {
     const matchesCategory = selectedCategory === null || m.category === selectedCategory
     return matchesSearch && matchesCategory
   })
+
+  // 渲染资料卡片（可复用）
+  const renderMaterialCard = (material: Material, showFavorite: boolean = true) => (
+    <div
+      key={material.id}
+      onClick={() => openDetail(material)}
+      className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 active:bg-gray-50 transition-colors cursor-pointer"
+    >
+      <div className="flex items-start gap-3">
+        <div 
+          className="w-10 h-10 rounded-xl flex items-center justify-center text-lg flex-shrink-0"
+          style={{ backgroundColor: material.color + '20' }}
+        >
+          {categories.find(c => c.id === material.category)?.icon}
+        </div>
+        <div className="flex-1 min-w-0">
+          <h3 className="font-medium text-gray-900 truncate">{material.title}</h3>
+          <p className="text-gray-500 text-sm mt-1 line-clamp-2">{material.content}</p>
+          <div className="flex items-center gap-2 mt-2">
+            <span className="text-xs text-gray-400">{formatTime(material.createdAt)}</span>
+            {material.tags.map(tag => (
+              <span key={tag} className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">
+                {tag}
+              </span>
+            ))}
+          </div>
+        </div>
+        {showFavorite && (
+          <button 
+            onClick={(e) => toggleFavorite(material.id, e)}
+            className="text-xl flex-shrink-0 active:scale-110 transition-transform"
+          >
+            {material.isFavorite ? '⭐' : '☆'}
+          </button>
+        )}
+      </div>
+    </div>
+  )
+
+  // 渲染详情弹窗
+  const renderDetailSheet = () => (
+    <div 
+      className={cn(
+        "fixed inset-0 z-50 transition-all duration-300",
+        selectedMaterial ? "visible" : "invisible"
+      )}
+    >
+      <div 
+        className={cn(
+          "absolute inset-0 bg-black/40 transition-opacity duration-300",
+          selectedMaterial ? "opacity-100" : "opacity-0"
+        )}
+        onClick={() => {
+          setSelectedMaterial(null)
+          setIsEditing(false)
+          setShowDeleteConfirm(false)
+        }}
+      />
+      <div 
+        className={cn(
+          "absolute bottom-0 left-0 right-0 bg-white rounded-t-3xl transition-transform duration-300",
+          selectedMaterial ? "translate-y-0" : "translate-y-full"
+        )}
+        style={{ maxHeight: '90vh' }}
+      >
+        {/* 拖动条 */}
+        <div className="flex justify-center pt-3 pb-2">
+          <div className="w-10 h-1 bg-gray-300 rounded-full" />
+        </div>
+
+        {selectedMaterial && (
+          <div className="px-5 pb-8 max-h-[80vh] overflow-auto">
+            {/* 顶部操作栏 */}
+            <div className="flex items-center justify-between mb-4">
+              <button 
+                onClick={() => {
+                  setSelectedMaterial(null)
+                  setIsEditing(false)
+                  setShowDeleteConfirm(false)
+                }}
+                className="text-blue-500 font-medium"
+              >
+                关闭
+              </button>
+              <div className="flex items-center gap-3">
+                <button 
+                  onClick={() => toggleFavorite(selectedMaterial.id)}
+                  className="text-2xl active:scale-110 transition-transform"
+                >
+                  {selectedMaterial.isFavorite ? '⭐' : '☆'}
+                </button>
+                {!isEditing && (
+                  <button 
+                    onClick={() => setIsEditing(true)}
+                    className="text-blue-500 font-medium"
+                  >
+                    编辑
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* 分类和日期 */}
+            <div className="flex items-center gap-3 mb-4">
+              <div 
+                className="px-3 py-1.5 rounded-full flex items-center gap-1.5"
+                style={{ backgroundColor: selectedMaterial.color + '20' }}
+              >
+                <span>{categories.find(c => c.id === selectedMaterial.category)?.icon}</span>
+                <span className="text-sm font-medium" style={{ color: selectedMaterial.color }}>
+                  {categories.find(c => c.id === selectedMaterial.category)?.name}
+                </span>
+              </div>
+              <span className="text-sm text-gray-400">
+                {formatFullDate(selectedMaterial.createdAt)}
+              </span>
+            </div>
+
+            {/* 内容区域 */}
+            {isEditing ? (
+              <div className="space-y-4">
+                <input
+                  type="text"
+                  value={editContent.title}
+                  onChange={(e) => setEditContent({ ...editContent, title: e.target.value })}
+                  className="w-full bg-gray-100 rounded-xl px-4 py-3 text-gray-900 text-lg font-medium focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+                  placeholder="标题"
+                />
+                <textarea
+                  value={editContent.content}
+                  onChange={(e) => setEditContent({ ...editContent, content: e.target.value })}
+                  className="w-full bg-gray-100 rounded-xl px-4 py-3 text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500/50 resize-none min-h-[200px]"
+                  placeholder="内容"
+                />
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => {
+                      setIsEditing(false)
+                      setEditContent({ title: selectedMaterial.title, content: selectedMaterial.content })
+                    }}
+                    className="flex-1 py-3 rounded-xl font-medium bg-gray-100 text-gray-700"
+                  >
+                    取消
+                  </button>
+                  <button
+                    onClick={handleEdit}
+                    disabled={!editContent.title.trim()}
+                    className={cn(
+                      "flex-1 py-3 rounded-xl font-medium transition-all",
+                      editContent.title.trim()
+                        ? "bg-blue-500 text-white"
+                        : "bg-gray-200 text-gray-400"
+                    )}
+                  >
+                    保存
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <h2 className="text-xl font-semibold text-gray-900 mb-3">
+                  {selectedMaterial.title}
+                </h2>
+                <p className="text-gray-700 leading-relaxed whitespace-pre-wrap">
+                  {selectedMaterial.content}
+                </p>
+
+                {/* 标签 */}
+                {selectedMaterial.tags.length > 0 && (
+                  <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t border-gray-100">
+                    {selectedMaterial.tags.map(tag => (
+                      <span 
+                        key={tag} 
+                        className="text-sm bg-gray-100 text-gray-600 px-3 py-1 rounded-full"
+                      >
+                        #{tag}
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                {/* 删除按钮 */}
+                <div className="mt-6 pt-4 border-t border-gray-100">
+                  {showDeleteConfirm ? (
+                    <div className="bg-red-50 rounded-xl p-4">
+                      <p className="text-red-600 text-center mb-3">确定要删除这条资料吗？</p>
+                      <div className="flex gap-3">
+                        <button
+                          onClick={() => setShowDeleteConfirm(false)}
+                          className="flex-1 py-3 rounded-xl font-medium bg-white text-gray-700 border border-gray-200"
+                        >
+                          取消
+                        </button>
+                        <button
+                          onClick={() => handleDelete(selectedMaterial.id)}
+                          className="flex-1 py-3 rounded-xl font-medium bg-red-500 text-white"
+                        >
+                          删除
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setShowDeleteConfirm(true)}
+                      className="w-full py-3 rounded-xl font-medium text-red-500 bg-red-50 active:bg-red-100 transition-colors"
+                    >
+                      删除此资料
+                    </button>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  )
 
   // 渲染首页内容
   const renderHomeContent = () => (
@@ -209,39 +479,7 @@ export default function Home() {
         </div>
 
         <div className="space-y-3">
-          {materials.slice(0, 4).map(material => (
-            <div
-              key={material.id}
-              className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 active:bg-gray-50 transition-colors"
-            >
-              <div className="flex items-start gap-3">
-                <div 
-                  className="w-10 h-10 rounded-xl flex items-center justify-center text-lg flex-shrink-0"
-                  style={{ backgroundColor: material.color + '20' }}
-                >
-                  {categories.find(c => c.id === material.category)?.icon}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <h3 className="font-medium text-gray-900 truncate">{material.title}</h3>
-                  <p className="text-gray-500 text-sm mt-1 line-clamp-2">{material.content}</p>
-                  <div className="flex items-center gap-2 mt-2">
-                    <span className="text-xs text-gray-400">{formatTime(material.createdAt)}</span>
-                    {material.tags.map(tag => (
-                      <span key={tag} className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">
-                        {tag}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-                <button 
-                  onClick={() => toggleFavorite(material.id)}
-                  className="text-xl flex-shrink-0"
-                >
-                  {material.isFavorite ? '⭐' : '☆'}
-                </button>
-              </div>
-            </div>
-          ))}
+          {materials.slice(0, 4).map(material => renderMaterialCard(material))}
         </div>
       </div>
 
@@ -325,15 +563,7 @@ export default function Home() {
             </button>
           </div>
           <div className="space-y-3">
-            {filteredMaterials.map(material => (
-              <div
-                key={material.id}
-                className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100"
-              >
-                <h3 className="font-medium text-gray-900">{material.title}</h3>
-                <p className="text-gray-500 text-sm mt-1 line-clamp-2">{material.content}</p>
-              </div>
-            ))}
+            {filteredMaterials.map(material => renderMaterialCard(material, false))}
           </div>
         </div>
       )}
@@ -384,25 +614,7 @@ export default function Home() {
             找到 {filteredMaterials.length} 条结果
           </p>
           <div className="space-y-3">
-            {filteredMaterials.map(material => (
-              <div
-                key={material.id}
-                className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100"
-              >
-                <div className="flex items-start gap-3">
-                  <div 
-                    className="w-10 h-10 rounded-xl flex items-center justify-center text-lg flex-shrink-0"
-                    style={{ backgroundColor: material.color + '20' }}
-                  >
-                    {categories.find(c => c.id === material.category)?.icon}
-                  </div>
-                  <div className="flex-1">
-                    <h3 className="font-medium text-gray-900">{material.title}</h3>
-                    <p className="text-gray-500 text-sm mt-1">{material.content}</p>
-                  </div>
-                </div>
-              </div>
-            ))}
+            {filteredMaterials.map(material => renderMaterialCard(material))}
           </div>
         </div>
       )}
@@ -657,6 +869,9 @@ export default function Home() {
 
         {/* 添加弹窗 */}
         {renderAddSheet()}
+        
+        {/* 详情弹窗 */}
+        {renderDetailSheet()}
       </div>
 
       {/* 功能说明 */}
@@ -678,6 +893,10 @@ export default function Home() {
           <div className="flex items-start gap-2">
             <span className="text-green-500">●</span>
             <p><strong>收藏标记</strong> - 重要资料一目了然</p>
+          </div>
+          <div className="flex items-start gap-2">
+            <span className="text-red-500">●</span>
+            <p><strong>编辑删除</strong> - 随时管理你的资料</p>
           </div>
         </div>
 

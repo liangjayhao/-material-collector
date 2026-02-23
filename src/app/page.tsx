@@ -1,123 +1,94 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { cn } from '@/lib/utils'
-import { usePWA } from '@/hooks/use-pwa'
+import { useState, useEffect, useCallback, useRef } from 'react'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog'
+import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'
+import { ScrollArea } from '@/components/ui/scroll-area'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Label } from '@/components/ui/label'
+import {
+  FileText, Image as ImageIcon, Video, Music, Link2, Plus, Search, Trash2, Edit,
+  FolderOpen, Heart, Menu, Upload, CloudUpload, Tag, Clock, Camera, Clipboard
+} from 'lucide-react'
+import { toast, Toaster } from 'sonner'
 
-// 资料类型定义
+// 类型定义
 interface Material {
   id: string
   title: string
-  content: string
-  category: string
-  tags: string[]
-  createdAt: Date
+  content: string | null
+  type: string
+  tags: string | null
   isFavorite: boolean
-  color: string
+  filePath: string | null
+  fileName: string | null
+  fileSize: number | null
+  mimeType: string | null
+  categoryId: string | null
+  category: { id: string; name: string; icon: string | null; color: string | null } | null
+  createdAt: string
+  updatedAt: string
 }
 
-// 预设分类
-const categories = [
-  { id: 'article', name: '文章', icon: '📖', color: '#5B8DEF' },
-  { id: 'idea', name: '灵感', icon: '💡', color: '#F5A623' },
-  { id: 'quote', name: '语录', icon: '💬', color: '#7B68EE' },
-  { id: 'link', name: '链接', icon: '🔗', color: '#4ECDC4' },
-  { id: 'note', name: '笔记', icon: '📝', color: '#FF6B6B' },
-  { id: 'image', name: '图片', icon: '🖼️', color: '#95E1D3' },
-]
+interface Category {
+  id: string
+  name: string
+  icon: string | null
+  color: string | null
+  _count?: { materials: number }
+}
 
-// 模拟数据
-const mockMaterials: Material[] = [
-  {
-    id: '1',
-    title: '设计思维的核心原则',
-    content: '以用户为中心，快速原型迭代，拥抱失败。设计思维是一种以人为本的创新方法，它借鉴了设计师的工具和方法，将用户需求、技术可行性和商业成功结合起来。核心原则包括：同理心、定义问题、创意构思、原型制作和测试验证。',
-    category: 'article',
-    tags: ['设计', '方法论'],
-    createdAt: new Date(Date.now() - 1000 * 60 * 30),
-    isFavorite: true,
-    color: '#5B8DEF'
-  },
-  {
-    id: '2',
-    title: '产品开发灵感',
-    content: '可以做一个结合AI的资料整理工具。用户在浏览网页、阅读文章时，可以快速收集有价值的内容，通过AI自动分类和标签化，让零散的信息变成有序的知识库。',
-    category: 'idea',
-    tags: ['产品', 'AI'],
-    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 2),
-    isFavorite: false,
-    color: '#F5A623'
-  },
-  {
-    id: '3',
-    title: '"简单是复杂的终极形式"',
-    content: '达芬奇说过，简约不是少，而是没有多余。这句话深刻地揭示了设计的本质——好的设计不是简单地减少元素，而是通过精心的筛选和组合，保留最核心、最有价值的部分。',
-    category: 'quote',
-    tags: ['名言', '设计哲学'],
-    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 5),
-    isFavorite: true,
-    color: '#7B68EE'
-  },
-  {
-    id: '4',
-    title: 'React最佳实践文章',
-    content: 'https://react.dev/learn/thinking-in-react\n\n这篇文章详细介绍了React的组件化思维，包括如何将UI拆分为组件层级、用React构建静态版本、找出UI最简完整state的表示、让state在哪声明等关键步骤。',
-    category: 'link',
-    tags: ['技术', 'React'],
-    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24),
-    isFavorite: false,
-    color: '#4ECDC4'
-  },
-]
+// 类型图标映射
+const typeIcons: Record<string, any> = {
+  text: FileText,
+  image: ImageIcon,
+  video: Video,
+  audio: Music,
+  link: Link2
+}
 
-// 底部导航项
-const navItems = [
-  { id: 'home', icon: 'house', label: '首页' },
-  { id: 'category', icon: 'folder', label: '分类' },
-  { id: 'add', icon: 'plus.circle.fill', label: '' },
-  { id: 'search', icon: 'magnifyingglass', label: '搜索' },
-  { id: 'profile', icon: 'person', label: '我的' },
-]
+// 类型颜色映射
+const typeColors: Record<string, string> = {
+  text: 'bg-blue-100 text-blue-700 border-blue-200',
+  image: 'bg-green-100 text-green-700 border-green-200',
+  video: 'bg-purple-100 text-purple-700 border-purple-200',
+  audio: 'bg-orange-100 text-orange-700 border-orange-200',
+  link: 'bg-cyan-100 text-cyan-700 border-cyan-200'
+}
 
-// 从本地存储加载初始数据
-function loadInitialMaterials(): Material[] {
-  if (typeof window === 'undefined') return mockMaterials
-  const saved = localStorage.getItem('materials')
-  if (saved) {
-    try {
-      const parsed = JSON.parse(saved)
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed.map((m: Material) => ({
-          ...m,
-          createdAt: new Date(m.createdAt)
-        }))
-      }
-    } catch (e) {
-      console.error('Failed to load materials:', e)
-    }
+// 类型名称映射
+const typeNames: Record<string, string> = {
+  text: '文字',
+  image: '图片',
+  video: '视频',
+  audio: '音频',
+  link: '链接'
+}
+
+// 格式化文件大小
+function formatFileSize(bytes: number | null): string {
+  if (!bytes) return ''
+  const units = ['B', 'KB', 'MB', 'GB']
+  let size = bytes
+  let unitIndex = 0
+  while (size >= 1024 && unitIndex < units.length - 1) {
+    size /= 1024
+    unitIndex++
   }
-  return mockMaterials
+  return `${size.toFixed(1)} ${units[unitIndex]}`
 }
 
-// 格式化时间
-function formatTime(date: Date) {
-  const now = new Date()
-  const diff = now.getTime() - date.getTime()
-  const minutes = Math.floor(diff / (1000 * 60))
-  const hours = Math.floor(diff / (1000 * 60 * 60))
-  const days = Math.floor(diff / (1000 * 60 * 60 * 24))
-  
-  if (minutes < 60) return `${minutes}分钟前`
-  if (hours < 24) return `${hours}小时前`
-  if (days < 7) return `${days}天前`
-  return date.toLocaleDateString('zh-CN')
-}
-
-// 格式化完整日期
-function formatFullDate(date: Date) {
-  return date.toLocaleString('zh-CN', {
+// 格式化日期
+function formatDate(dateStr: string): string {
+  const date = new Date(dateStr)
+  return date.toLocaleDateString('zh-CN', {
     year: 'numeric',
-    month: 'long',
+    month: 'short',
     day: 'numeric',
     hour: '2-digit',
     minute: '2-digit'
@@ -125,831 +96,904 @@ function formatFullDate(date: Date) {
 }
 
 export default function Home() {
-  const [activeTab, setActiveTab] = useState('home')
-  const [materials, setMaterials] = useState<Material[]>(loadInitialMaterials)
-  const [showAddSheet, setShowAddSheet] = useState(false)
-  const [newItem, setNewItem] = useState({ title: '', content: '', category: 'note' })
+  const [materials, setMaterials] = useState<Material[]>([])
+  const [categories, setCategories] = useState<Category[]>([])
+  const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
-  const [showInstallBanner, setShowInstallBanner] = useState(true)
-  const { isInstalled, canInstall, install } = usePWA()
-  
-  // 详情页相关状态
-  const [selectedMaterial, setSelectedMaterial] = useState<Material | null>(null)
-  const [isEditing, setIsEditing] = useState(false)
-  const [editContent, setEditContent] = useState({ title: '', content: '' })
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [selectedType, setSelectedType] = useState('all')
+  const [selectedCategory, setSelectedCategory] = useState('all')
+  const [showFavorites, setShowFavorites] = useState(false)
+  const [dialogOpen, setDialogOpen] = useState(false)
+  const [editingMaterial, setEditingMaterial] = useState<Material | null>(null)
+  const [dragOver, setDragOver] = useState(false)
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
 
-  // 保存到本地存储
-  useEffect(() => {
-    localStorage.setItem('materials', JSON.stringify(materials))
-  }, [materials])
+  // 表单状态
+  const [formData, setFormData] = useState({
+    title: '',
+    content: '',
+    type: 'text',
+    tags: '',
+    categoryId: '',
+    isFavorite: false
+  })
+  const [uploadFile, setUploadFile] = useState<File | null>(null)
+  const [uploading, setUploading] = useState(false)
 
-  // 添加新资料
-  const handleAdd = () => {
-    if (!newItem.title.trim()) return
-    const categoryInfo = categories.find(c => c.id === newItem.category)
-    const newMaterial: Material = {
-      id: Date.now().toString(),
-      title: newItem.title,
-      content: newItem.content,
-      category: newItem.category,
-      tags: [],
-      createdAt: new Date(),
-      isFavorite: false,
-      color: categoryInfo?.color || '#888'
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const imageInputRef = useRef<HTMLInputElement>(null)
+  const cameraInputRef = useRef<HTMLInputElement>(null)
+
+  // 获取材料
+  const fetchMaterials = useCallback(async () => {
+    try {
+      const params = new URLSearchParams()
+      if (selectedType !== 'all') params.append('type', selectedType)
+      if (selectedCategory !== 'all') params.append('category', selectedCategory)
+      if (searchQuery) params.append('search', searchQuery)
+      if (showFavorites) params.append('favorite', 'true')
+
+      const res = await fetch(`/api/materials?${params}`)
+      const data = await res.json()
+      setMaterials(data)
+    } catch (error) {
+      console.error('获取材料失败:', error)
+      toast.error('获取材料失败')
+    } finally {
+      setLoading(false)
     }
-    setMaterials([newMaterial, ...materials])
-    setNewItem({ title: '', content: '', category: 'note' })
-    setShowAddSheet(false)
+  }, [selectedType, selectedCategory, searchQuery, showFavorites])
+
+  // 获取分类
+  const fetchCategories = async () => {
+    try {
+      const res = await fetch('/api/categories')
+      const data = await res.json()
+      setCategories(data)
+    } catch (error) {
+      console.error('获取分类失败:', error)
+    }
+  }
+
+  useEffect(() => {
+    fetchMaterials()
+    fetchCategories()
+  }, [fetchMaterials])
+
+  // 监听粘贴事件
+  useEffect(() => {
+    const handlePaste = async (e: ClipboardEvent) => {
+      const items = e.clipboardData?.items
+      if (!items) return
+
+      for (const item of items) {
+        if (item.type.startsWith('image/')) {
+          e.preventDefault()
+          const file = item.getAsFile()
+          if (file) {
+            toast.success('检测到粘贴的图片，正在上传...')
+            await handleFileUpload(file)
+          }
+          break
+        }
+      }
+    }
+
+    document.addEventListener('paste', handlePaste)
+    return () => document.removeEventListener('paste', handlePaste)
+  }, [selectedCategory])
+
+  // 处理文件上传
+  const handleFileUpload = async (file: File) => {
+    setUploading(true)
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+
+      const res = await fetch('/api/upload', {
+        method: 'POST',
+        body: formData
+      })
+
+      const data = await res.json()
+      if (data.success) {
+        // 自动创建材料
+        const materialRes = await fetch('/api/materials', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            title: file.name,
+            type: data.type,
+            filePath: data.filePath,
+            fileName: data.fileName,
+            fileSize: data.fileSize,
+            mimeType: data.mimeType,
+            categoryId: selectedCategory !== 'all' ? selectedCategory : null
+          })
+        })
+
+        if (materialRes.ok) {
+          toast.success('文件上传成功')
+          fetchMaterials()
+        }
+      }
+    } catch (error) {
+      console.error('上传失败:', error)
+      toast.error('上传失败')
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  // 处理图片选择
+  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      handleFileUpload(file)
+    }
+    e.target.value = '' // 重置以便再次选择同一文件
+  }
+
+  // 拖拽处理
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault()
+    setDragOver(true)
+  }
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault()
+    setDragOver(false)
+  }
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault()
+    setDragOver(false)
+
+    const files = e.dataTransfer.files
+    if (files.length > 0) {
+      handleFileUpload(files[0])
+    }
+  }
+
+  // 提交表单
+  const handleSubmit = async () => {
+    if (!formData.title.trim()) {
+      toast.error('请输入标题')
+      return
+    }
+
+    setUploading(true)
+    try {
+      let filePath = null
+      let fileName = null
+      let fileSize = null
+      let mimeType = null
+      let type = formData.type
+
+      // 如果有文件上传
+      if (uploadFile) {
+        const uploadFormData = new FormData()
+        uploadFormData.append('file', uploadFile)
+
+        const uploadRes = await fetch('/api/upload', {
+          method: 'POST',
+          body: uploadFormData
+        })
+
+        const uploadData = await uploadRes.json()
+        if (uploadData.success) {
+          filePath = uploadData.filePath
+          fileName = uploadData.fileName
+          fileSize = uploadData.fileSize
+          mimeType = uploadData.mimeType
+          type = uploadData.type
+        }
+      }
+
+      const body = {
+        title: formData.title,
+        content: formData.content,
+        type,
+        tags: formData.tags ? formData.tags.split(',').map(t => t.trim()) : null,
+        categoryId: formData.categoryId || null,
+        isFavorite: formData.isFavorite,
+        filePath,
+        fileName,
+        fileSize,
+        mimeType
+      }
+
+      if (editingMaterial) {
+        await fetch(`/api/materials/${editingMaterial.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        })
+        toast.success('更新成功')
+      } else {
+        await fetch('/api/materials', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        })
+        toast.success('创建成功')
+      }
+
+      setDialogOpen(false)
+      resetForm()
+      fetchMaterials()
+    } catch (error) {
+      console.error('保存失败:', error)
+      toast.error('保存失败')
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  // 删除材料
+  const handleDelete = async (id: string) => {
+    if (!confirm('确定要删除这个材料吗？')) return
+
+    try {
+      await fetch(`/api/materials/${id}`, { method: 'DELETE' })
+      toast.success('删除成功')
+      fetchMaterials()
+    } catch (error) {
+      console.error('删除失败:', error)
+      toast.error('删除失败')
+    }
   }
 
   // 切换收藏
-  const toggleFavorite = (id: string, e?: React.MouseEvent) => {
-    if (e) e.stopPropagation()
-    setMaterials(materials.map(m => 
-      m.id === id ? { ...m, isFavorite: !m.isFavorite } : m
-    ))
-    // 如果是在详情页，也更新selectedMaterial
-    if (selectedMaterial?.id === id) {
-      setSelectedMaterial({ ...selectedMaterial, isFavorite: !selectedMaterial.isFavorite })
+  const toggleFavorite = async (material: Material) => {
+    try {
+      await fetch(`/api/materials/${material.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: material.title,
+          content: material.content,
+          tags: material.tags,
+          categoryId: material.categoryId,
+          isFavorite: !material.isFavorite
+        })
+      })
+      fetchMaterials()
+    } catch (error) {
+      console.error('操作失败:', error)
     }
   }
 
-  // 删除资料
-  const handleDelete = (id: string) => {
-    setMaterials(materials.filter(m => m.id !== id))
-    setSelectedMaterial(null)
-    setShowDeleteConfirm(false)
-  }
-
-  // 编辑资料
-  const handleEdit = () => {
-    if (!selectedMaterial) return
-    setMaterials(materials.map(m => 
-      m.id === selectedMaterial.id 
-        ? { ...m, title: editContent.title, content: editContent.content }
-        : m
-    ))
-    setSelectedMaterial({ 
-      ...selectedMaterial, 
-      title: editContent.title, 
-      content: editContent.content 
+  // 编辑材料
+  const handleEdit = (material: Material) => {
+    setEditingMaterial(material)
+    setFormData({
+      title: material.title,
+      content: material.content || '',
+      type: material.type,
+      tags: material.tags ? JSON.parse(material.tags).join(', ') : '',
+      categoryId: material.categoryId || '',
+      isFavorite: material.isFavorite
     })
-    setIsEditing(false)
+    setDialogOpen(true)
   }
 
-  // 打开详情
-  const openDetail = (material: Material) => {
-    setSelectedMaterial(material)
-    setEditContent({ title: material.title, content: material.content })
-    setIsEditing(false)
+  // 重置表单
+  const resetForm = () => {
+    setFormData({
+      title: '',
+      content: '',
+      type: 'text',
+      tags: '',
+      categoryId: '',
+      isFavorite: false
+    })
+    setUploadFile(null)
+    setPreviewUrl(null)
+    setEditingMaterial(null)
   }
 
-  // 过滤资料
-  const filteredMaterials = materials.filter(m => {
-    const matchesSearch = searchQuery === '' || 
-      m.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      m.content.toLowerCase().includes(searchQuery.toLowerCase())
-    const matchesCategory = selectedCategory === null || m.category === selectedCategory
-    return matchesSearch && matchesCategory
-  })
+  // 处理文件选择预览
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      setUploadFile(file)
+      // 生成预览URL
+      if (file.type.startsWith('image/')) {
+        const url = URL.createObjectURL(file)
+        setPreviewUrl(url)
+      } else {
+        setPreviewUrl(null)
+      }
+      // 自动填充标题
+      if (!formData.title) {
+        setFormData(prev => ({ ...prev, title: file.name }))
+      }
+    }
+  }
 
-  // 渲染资料卡片（可复用）
-  const renderMaterialCard = (material: Material, showFavorite: boolean = true) => (
-    <div
-      key={material.id}
-      onClick={() => openDetail(material)}
-      className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 active:bg-gray-50 transition-colors cursor-pointer"
-    >
-      <div className="flex items-start gap-3">
-        <div 
-          className="w-10 h-10 rounded-xl flex items-center justify-center text-lg flex-shrink-0"
-          style={{ backgroundColor: material.color + '20' }}
-        >
-          {categories.find(c => c.id === material.category)?.icon}
+  // 渲染材料预览
+  const renderPreview = (material: Material) => {
+    if (material.type === 'image' && material.filePath) {
+      return (
+        <div className="relative w-full h-32 bg-muted rounded-md overflow-hidden">
+          <img
+            src={material.filePath}
+            alt={material.title}
+            className="w-full h-full object-cover"
+          />
         </div>
-        <div className="flex-1 min-w-0">
-          <h3 className="font-medium text-gray-900 truncate">{material.title}</h3>
-          <p className="text-gray-500 text-sm mt-1 line-clamp-2">{material.content}</p>
-          <div className="flex items-center gap-2 mt-2">
-            <span className="text-xs text-gray-400">{formatTime(material.createdAt)}</span>
-            {material.tags.map(tag => (
-              <span key={tag} className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">
-                {tag}
-              </span>
-            ))}
+      )
+    }
+
+    if (material.type === 'video' && material.filePath) {
+      return (
+        <div className="relative w-full h-32 bg-muted rounded-md overflow-hidden flex items-center justify-center">
+          <video
+            src={material.filePath}
+            className="w-full h-full object-cover"
+          />
+          <div className="absolute inset-0 flex items-center justify-center bg-black/30">
+            <Video className="w-10 h-10 text-white" />
           </div>
         </div>
-        {showFavorite && (
-          <button 
-            onClick={(e) => toggleFavorite(material.id, e)}
-            className="text-xl flex-shrink-0 active:scale-110 transition-transform"
-          >
-            {material.isFavorite ? '⭐' : '☆'}
-          </button>
-        )}
+      )
+    }
+
+    if (material.type === 'audio' && material.filePath) {
+      return (
+        <div className="relative w-full h-32 bg-gradient-to-br from-orange-100 to-orange-200 rounded-md flex items-center justify-center">
+          <Music className="w-12 h-12 text-orange-500" />
+        </div>
+      )
+    }
+
+    if (material.type === 'link') {
+      return (
+        <div className="relative w-full h-32 bg-gradient-to-br from-cyan-100 to-cyan-200 rounded-md flex items-center justify-center">
+          <Link2 className="w-12 h-12 text-cyan-500" />
+        </div>
+      )
+    }
+
+    // 文字类型
+    return (
+      <div className="relative w-full h-32 bg-muted rounded-md overflow-hidden p-3">
+        <p className="text-sm text-muted-foreground line-clamp-4">
+          {material.content || '暂无内容'}
+        </p>
       </div>
+    )
+  }
+
+  // 侧边栏内容
+  const SidebarContent = () => (
+    <div className="flex flex-col h-full">
+      <div className="p-4 border-b">
+        <h2 className="font-semibold text-lg">分类导航</h2>
+      </div>
+      <ScrollArea className="flex-1 p-2">
+        <div className="space-y-1">
+          <Button
+            variant={selectedCategory === 'all' && !showFavorites ? 'secondary' : 'ghost'}
+            className="w-full justify-start gap-2"
+            onClick={() => {
+              setSelectedCategory('all')
+              setShowFavorites(false)
+              setMobileMenuOpen(false)
+            }}
+          >
+            <FolderOpen className="w-4 h-4" />
+            全部材料
+            <Badge variant="outline" className="ml-auto">{materials.length}</Badge>
+          </Button>
+          <Button
+            variant={showFavorites ? 'secondary' : 'ghost'}
+            className="w-full justify-start gap-2"
+            onClick={() => {
+              setShowFavorites(true)
+              setSelectedCategory('all')
+              setMobileMenuOpen(false)
+            }}
+          >
+            <Heart className="w-4 h-4 text-red-500" />
+            我的收藏
+          </Button>
+
+          <div className="h-px bg-border my-2" />
+
+          <div className="px-2 py-1 text-xs text-muted-foreground font-medium">
+            自定义分类
+          </div>
+          {categories.map((category) => (
+            <Button
+              key={category.id}
+              variant={selectedCategory === category.id ? 'secondary' : 'ghost'}
+              className="w-full justify-start gap-2"
+              onClick={() => {
+                setSelectedCategory(category.id)
+                setShowFavorites(false)
+                setMobileMenuOpen(false)
+              }}
+            >
+              <div
+                className="w-3 h-3 rounded-full"
+                style={{ backgroundColor: category.color || '#888' }}
+              />
+              {category.name}
+              <Badge variant="outline" className="ml-auto">
+                {category._count?.materials || 0}
+              </Badge>
+            </Button>
+          ))}
+        </div>
+      </ScrollArea>
     </div>
   )
 
-  // 渲染详情弹窗
-  const renderDetailSheet = () => (
-    <div 
-      className={cn(
-        "fixed inset-0 z-50 transition-all duration-300",
-        selectedMaterial ? "visible" : "invisible"
-      )}
+  return (
+    <div
+      className="min-h-screen bg-background"
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
     >
-      <div 
-        className={cn(
-          "absolute inset-0 bg-black/40 transition-opacity duration-300",
-          selectedMaterial ? "opacity-100" : "opacity-0"
-        )}
-        onClick={() => {
-          setSelectedMaterial(null)
-          setIsEditing(false)
-          setShowDeleteConfirm(false)
-        }}
+      <Toaster position="top-center" />
+
+      {/* 隐藏的文件输入 */}
+      <input
+        ref={imageInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={handleImageSelect}
       />
-      <div 
-        className={cn(
-          "absolute bottom-0 left-0 right-0 bg-white rounded-t-3xl transition-transform duration-300",
-          selectedMaterial ? "translate-y-0" : "translate-y-full"
-        )}
-        style={{ maxHeight: '90vh' }}
-      >
-        {/* 拖动条 */}
-        <div className="flex justify-center pt-3 pb-2">
-          <div className="w-10 h-1 bg-gray-300 rounded-full" />
+      <input
+        ref={cameraInputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        className="hidden"
+        onChange={handleImageSelect}
+      />
+
+      {/* 拖拽上传遮罩 */}
+      {dragOver && (
+        <div className="fixed inset-0 bg-primary/10 backdrop-blur-sm z-50 flex items-center justify-center">
+          <div className="bg-background border-2 border-dashed border-primary rounded-xl p-12 text-center">
+            <CloudUpload className="w-16 h-16 mx-auto text-primary mb-4" />
+            <p className="text-xl font-medium">松开鼠标上传文件</p>
+          </div>
         </div>
+      )}
 
-        {selectedMaterial && (
-          <div className="px-5 pb-8 max-h-[80vh] overflow-auto">
-            {/* 顶部操作栏 */}
-            <div className="flex items-center justify-between mb-4">
-              <button 
-                onClick={() => {
-                  setSelectedMaterial(null)
-                  setIsEditing(false)
-                  setShowDeleteConfirm(false)
-                }}
-                className="text-blue-500 font-medium"
-              >
-                关闭
-              </button>
-              <div className="flex items-center gap-3">
-                <button 
-                  onClick={() => toggleFavorite(selectedMaterial.id)}
-                  className="text-2xl active:scale-110 transition-transform"
+      <div className="flex h-screen">
+        {/* 桌面端侧边栏 */}
+        <aside className="hidden md:flex w-64 border-r bg-card flex-col">
+          <SidebarContent />
+        </aside>
+
+        {/* 主内容区 */}
+        <main className="flex-1 flex flex-col overflow-hidden">
+          {/* 顶部栏 */}
+          <header className="border-b bg-card p-4 space-y-4">
+            <div className="flex items-center gap-4">
+              {/* 移动端菜单按钮 */}
+              <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
+                <SheetTrigger asChild className="md:hidden">
+                  <Button variant="ghost" size="icon">
+                    <Menu className="w-5 h-5" />
+                  </Button>
+                </SheetTrigger>
+                <SheetContent side="left" className="p-0 w-64">
+                  <SidebarContent />
+                </SheetContent>
+              </Sheet>
+
+              <h1 className="text-xl font-bold">资料整理工具</h1>
+
+              <div className="flex-1" />
+
+              {/* 快捷上传按钮 */}
+              <div className="flex items-center gap-2">
+                {/* 从相册选择图片 */}
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="relative"
+                  onClick={() => imageInputRef.current?.click()}
+                  title="从相册选择图片"
                 >
-                  {selectedMaterial.isFavorite ? '⭐' : '☆'}
-                </button>
-                {!isEditing && (
-                  <button 
-                    onClick={() => setIsEditing(true)}
-                    className="text-blue-500 font-medium"
-                  >
-                    编辑
-                  </button>
-                )}
+                  <ImageIcon className="w-4 h-4" />
+                </Button>
+                
+                {/* 拍照上传 */}
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="relative md:hidden"
+                  onClick={() => cameraInputRef.current?.click()}
+                  title="拍照上传"
+                >
+                  <Camera className="w-4 h-4" />
+                </Button>
+
+                <Dialog open={dialogOpen} onOpenChange={(open) => {
+                  setDialogOpen(open)
+                  if (!open) resetForm()
+                }}>
+                  <DialogTrigger asChild>
+                    <Button className="gap-2">
+                      <Plus className="w-4 h-4" />
+                      <span className="hidden sm:inline">添加材料</span>
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="max-w-md">
+                    <DialogHeader>
+                      <DialogTitle>
+                        {editingMaterial ? '编辑材料' : '添加材料'}
+                      </DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-4 py-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="title">标题</Label>
+                        <Input
+                          id="title"
+                          placeholder="输入标题"
+                          value={formData.title}
+                          onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="type">类型</Label>
+                        <Select
+                          value={formData.type}
+                          onValueChange={(value) => setFormData({ ...formData, type: value })}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="text">文字</SelectItem>
+                            <SelectItem value="image">图片</SelectItem>
+                            <SelectItem value="video">视频</SelectItem>
+                            <SelectItem value="audio">音频</SelectItem>
+                            <SelectItem value="link">链接</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      {formData.type === 'text' && (
+                        <div className="space-y-2">
+                          <Label htmlFor="content">内容</Label>
+                          <Textarea
+                            id="content"
+                            placeholder="输入内容（也可直接粘贴文字）"
+                            rows={4}
+                            value={formData.content}
+                            onChange={(e) => setFormData({ ...formData, content: e.target.value })}
+                          />
+                        </div>
+                      )}
+
+                      {formData.type === 'image' && (
+                        <div className="space-y-3">
+                          <Label>上传图片</Label>
+                          
+                          {/* 图片预览区域 */}
+                          {previewUrl ? (
+                            <div className="relative w-full aspect-video bg-muted rounded-md overflow-hidden">
+                              <img
+                                src={previewUrl}
+                                alt="预览"
+                                className="w-full h-full object-contain"
+                              />
+                              <Button
+                                variant="destructive"
+                                size="sm"
+                                className="absolute top-2 right-2"
+                                onClick={() => {
+                                  setUploadFile(null)
+                                  setPreviewUrl(null)
+                                }}
+                              >
+                                移除
+                              </Button>
+                            </div>
+                          ) : (
+                            <div className="grid grid-cols-2 gap-2">
+                              {/* 从相册选择 */}
+                              <label className="flex flex-col items-center justify-center h-24 border-2 border-dashed rounded-md cursor-pointer hover:bg-muted/50 transition-colors">
+                                <ImageIcon className="w-6 h-6 mb-1 text-muted-foreground" />
+                                <span className="text-xs text-muted-foreground">相册选择</span>
+                                <input
+                                  type="file"
+                                  accept="image/*"
+                                  className="hidden"
+                                  onChange={handleFileChange}
+                                />
+                              </label>
+                              
+                              {/* 拍照上传 */}
+                              <label className="flex flex-col items-center justify-center h-24 border-2 border-dashed rounded-md cursor-pointer hover:bg-muted/50 transition-colors">
+                                <Camera className="w-6 h-6 mb-1 text-muted-foreground" />
+                                <span className="text-xs text-muted-foreground">拍照上传</span>
+                                <input
+                                  type="file"
+                                  accept="image/*"
+                                  capture="environment"
+                                  className="hidden"
+                                  onChange={handleFileChange}
+                                />
+                              </label>
+                            </div>
+                          )}
+                          
+                          {/* 提示 */}
+                          <p className="text-xs text-muted-foreground flex items-center gap-1">
+                            <Clipboard className="w-3 h-3" />
+                            提示：也可以直接 Ctrl+V 粘贴图片
+                          </p>
+                          
+                          {uploadFile && (
+                            <p className="text-sm text-muted-foreground">
+                              已选择: {uploadFile.name}
+                            </p>
+                          )}
+                        </div>
+                      )}
+
+                      {formData.type === 'video' && (
+                        <div className="space-y-2">
+                          <Label>上传视频</Label>
+                          <label className="flex flex-col items-center justify-center h-24 border-2 border-dashed rounded-md cursor-pointer hover:bg-muted/50 transition-colors">
+                            <Video className="w-6 h-6 mb-1 text-muted-foreground" />
+                            <span className="text-sm text-muted-foreground">点击选择视频</span>
+                            <input
+                              type="file"
+                              accept="video/*"
+                              className="hidden"
+                              onChange={handleFileChange}
+                            />
+                          </label>
+                          {uploadFile && (
+                            <p className="text-sm text-muted-foreground">
+                              已选择: {uploadFile.name}
+                            </p>
+                          )}
+                        </div>
+                      )}
+
+                      {formData.type === 'audio' && (
+                        <div className="space-y-2">
+                          <Label>上传音频</Label>
+                          <label className="flex flex-col items-center justify-center h-24 border-2 border-dashed rounded-md cursor-pointer hover:bg-muted/50 transition-colors">
+                            <Music className="w-6 h-6 mb-1 text-muted-foreground" />
+                            <span className="text-sm text-muted-foreground">点击选择音频</span>
+                            <input
+                              type="file"
+                              accept="audio/*"
+                              className="hidden"
+                              onChange={handleFileChange}
+                            />
+                          </label>
+                          {uploadFile && (
+                            <p className="text-sm text-muted-foreground">
+                              已选择: {uploadFile.name}
+                            </p>
+                          )}
+                        </div>
+                      )}
+
+                      {formData.type === 'link' && (
+                        <div className="space-y-2">
+                          <Label htmlFor="content">链接地址</Label>
+                          <Input
+                            id="content"
+                            placeholder="https://..."
+                            value={formData.content || ''}
+                            onChange={(e) => setFormData({ ...formData, content: e.target.value })}
+                          />
+                        </div>
+                      )}
+
+                      <div className="space-y-2">
+                        <Label htmlFor="category">分类</Label>
+                        <Select
+                          value={formData.categoryId}
+                          onValueChange={(value) => setFormData({ ...formData, categoryId: value })}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="选择分类" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="">无分类</SelectItem>
+                            {categories.map((cat) => (
+                              <SelectItem key={cat.id} value={cat.id}>
+                                {cat.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="tags">标签 (用逗号分隔)</Label>
+                        <Input
+                          id="tags"
+                          placeholder="标签1, 标签2, ..."
+                          value={formData.tags}
+                          onChange={(e) => setFormData({ ...formData, tags: e.target.value })}
+                        />
+                      </div>
+
+                      <div className="flex items-center space-x-2">
+                        <input
+                          type="checkbox"
+                          id="favorite"
+                          checked={formData.isFavorite}
+                          onChange={(e) => setFormData({ ...formData, isFavorite: e.target.checked })}
+                          className="w-4 h-4"
+                        />
+                        <Label htmlFor="favorite">添加到收藏</Label>
+                      </div>
+                    </div>
+                    <DialogFooter>
+                      <Button variant="outline" onClick={() => setDialogOpen(false)}>
+                        取消
+                      </Button>
+                      <Button onClick={handleSubmit} disabled={uploading}>
+                        {uploading ? '保存中...' : '保存'}
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
               </div>
             </div>
 
-            {/* 分类和日期 */}
-            <div className="flex items-center gap-3 mb-4">
-              <div 
-                className="px-3 py-1.5 rounded-full flex items-center gap-1.5"
-                style={{ backgroundColor: selectedMaterial.color + '20' }}
-              >
-                <span>{categories.find(c => c.id === selectedMaterial.category)?.icon}</span>
-                <span className="text-sm font-medium" style={{ color: selectedMaterial.color }}>
-                  {categories.find(c => c.id === selectedMaterial.category)?.name}
-                </span>
+            {/* 搜索和筛选 */}
+            <div className="flex flex-wrap gap-3">
+              <div className="relative flex-1 min-w-[200px]">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Input
+                  placeholder="搜索材料..."
+                  className="pl-9"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                />
               </div>
-              <span className="text-sm text-gray-400">
-                {formatFullDate(selectedMaterial.createdAt)}
-              </span>
+              <Select value={selectedType} onValueChange={setSelectedType}>
+                <SelectTrigger className="w-[120px]">
+                  <SelectValue placeholder="类型" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">全部类型</SelectItem>
+                  <SelectItem value="text">文字</SelectItem>
+                  <SelectItem value="image">图片</SelectItem>
+                  <SelectItem value="video">视频</SelectItem>
+                  <SelectItem value="audio">音频</SelectItem>
+                  <SelectItem value="link">链接</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
+          </header>
 
-            {/* 内容区域 */}
-            {isEditing ? (
-              <div className="space-y-4">
-                <input
-                  type="text"
-                  value={editContent.title}
-                  onChange={(e) => setEditContent({ ...editContent, title: e.target.value })}
-                  className="w-full bg-gray-100 rounded-xl px-4 py-3 text-gray-900 text-lg font-medium focus:outline-none focus:ring-2 focus:ring-blue-500/50"
-                  placeholder="标题"
-                />
-                <textarea
-                  value={editContent.content}
-                  onChange={(e) => setEditContent({ ...editContent, content: e.target.value })}
-                  className="w-full bg-gray-100 rounded-xl px-4 py-3 text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500/50 resize-none min-h-[200px]"
-                  placeholder="内容"
-                />
-                <div className="flex gap-3">
-                  <button
-                    onClick={() => {
-                      setIsEditing(false)
-                      setEditContent({ title: selectedMaterial.title, content: selectedMaterial.content })
-                    }}
-                    className="flex-1 py-3 rounded-xl font-medium bg-gray-100 text-gray-700"
-                  >
-                    取消
-                  </button>
-                  <button
-                    onClick={handleEdit}
-                    disabled={!editContent.title.trim()}
-                    className={cn(
-                      "flex-1 py-3 rounded-xl font-medium transition-all",
-                      editContent.title.trim()
-                        ? "bg-blue-500 text-white"
-                        : "bg-gray-200 text-gray-400"
-                    )}
-                  >
-                    保存
-                  </button>
+          {/* 材料列表 */}
+          <ScrollArea className="flex-1 p-4">
+            {loading ? (
+              <div className="flex items-center justify-center h-64">
+                <p className="text-muted-foreground">加载中...</p>
+              </div>
+            ) : materials.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-64 text-center">
+                <Upload className="w-16 h-16 text-muted-foreground mb-4" />
+                <h3 className="text-lg font-medium mb-2">暂无材料</h3>
+                <p className="text-muted-foreground mb-4">
+                  点击"添加材料"按钮或拖拽文件到此处上传
+                </p>
+                <div className="flex gap-2">
+                  <Button variant="outline" onClick={() => imageInputRef.current?.click()}>
+                    <ImageIcon className="w-4 h-4 mr-2" />
+                    选择图片
+                  </Button>
+                  <Button variant="outline" className="md:hidden" onClick={() => cameraInputRef.current?.click()}>
+                    <Camera className="w-4 h-4 mr-2" />
+                    拍照上传
+                  </Button>
                 </div>
               </div>
             ) : (
-              <>
-                <h2 className="text-xl font-semibold text-gray-900 mb-3">
-                  {selectedMaterial.title}
-                </h2>
-                <p className="text-gray-700 leading-relaxed whitespace-pre-wrap">
-                  {selectedMaterial.content}
-                </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                {materials.map((material) => {
+                  const TypeIcon = typeIcons[material.type] || FileText
+                  return (
+                    <Card key={material.id} className="group relative overflow-hidden hover:shadow-lg transition-shadow">
+                      <CardHeader className="p-3 pb-0">
+                        <div className="flex items-start justify-between gap-2">
+                          <CardTitle className="text-sm font-medium line-clamp-2 flex-1">
+                            {material.title}
+                          </CardTitle>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="shrink-0 h-6 w-6"
+                            onClick={() => toggleFavorite(material)}
+                          >
+                            <Heart
+                              className={`w-4 h-4 ${
+                                material.isFavorite ? 'fill-red-500 text-red-500' : 'text-muted-foreground'
+                              }`}
+                            />
+                          </Button>
+                        </div>
+                      </CardHeader>
+                      <CardContent className="p-3 pt-2 space-y-2">
+                        {renderPreview(material)}
+                        
+                        <div className="flex flex-wrap items-center gap-1">
+                          <Badge variant="outline" className={typeColors[material.type]}>
+                            <TypeIcon className="w-3 h-3 mr-1" />
+                            {typeNames[material.type]}
+                          </Badge>
+                          {material.category && (
+                            <Badge variant="secondary">
+                              {material.category.name}
+                            </Badge>
+                          )}
+                        </div>
 
-                {/* 标签 */}
-                {selectedMaterial.tags.length > 0 && (
-                  <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t border-gray-100">
-                    {selectedMaterial.tags.map(tag => (
-                      <span 
-                        key={tag} 
-                        className="text-sm bg-gray-100 text-gray-600 px-3 py-1 rounded-full"
-                      >
-                        #{tag}
-                      </span>
-                    ))}
-                  </div>
-                )}
+                        {material.fileSize && (
+                          <p className="text-xs text-muted-foreground">
+                            {formatFileSize(material.fileSize)}
+                          </p>
+                        )}
 
-                {/* 删除按钮 */}
-                <div className="mt-6 pt-4 border-t border-gray-100">
-                  {showDeleteConfirm ? (
-                    <div className="bg-red-50 rounded-xl p-4">
-                      <p className="text-red-600 text-center mb-3">确定要删除这条资料吗？</p>
-                      <div className="flex gap-3">
-                        <button
-                          onClick={() => setShowDeleteConfirm(false)}
-                          className="flex-1 py-3 rounded-xl font-medium bg-white text-gray-700 border border-gray-200"
-                        >
-                          取消
-                        </button>
-                        <button
-                          onClick={() => handleDelete(selectedMaterial.id)}
-                          className="flex-1 py-3 rounded-xl font-medium bg-red-500 text-white"
-                        >
-                          删除
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <button
-                      onClick={() => setShowDeleteConfirm(true)}
-                      className="w-full py-3 rounded-xl font-medium text-red-500 bg-red-50 active:bg-red-100 transition-colors"
-                    >
-                      删除此资料
-                    </button>
-                  )}
-                </div>
-              </>
-            )}
-          </div>
-        )}
-      </div>
-    </div>
-  )
+                        <div className="flex items-center justify-between pt-1">
+                          <span className="text-xs text-muted-foreground flex items-center gap-1">
+                            <Clock className="w-3 h-3" />
+                            {formatDate(material.createdAt)}
+                          </span>
+                          <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7"
+                              onClick={() => handleEdit(material)}
+                            >
+                              <Edit className="w-3.5 h-3.5" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 text-destructive hover:text-destructive"
+                              onClick={() => handleDelete(material.id)}
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </Button>
+                          </div>
+                        </div>
 
-  // 渲染首页内容
-  const renderHomeContent = () => (
-    <div className="flex-1 overflow-auto pb-20">
-      {/* 顶部标题 */}
-      <div className="px-5 pt-12 pb-4">
-        <h1 className="text-[28px] font-semibold text-gray-900 tracking-tight">我的资料库</h1>
-        <p className="text-gray-500 text-sm mt-1">随时记录，轻松整理</p>
-      </div>
-
-      {/* 快速添加入口 */}
-      <div className="px-5 mb-6">
-        <button 
-          onClick={() => setShowAddSheet(true)}
-          className="w-full bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-2xl p-4 flex items-center justify-center gap-2 shadow-lg shadow-blue-500/25 active:scale-[0.98] transition-transform"
-        >
-          <span className="text-xl">✨</span>
-          <span className="font-medium">快速收集资料</span>
-        </button>
-      </div>
-
-      {/* 分类快捷入口 */}
-      <div className="px-5 mb-6">
-        <div className="flex gap-3 overflow-x-auto pb-2 -mx-5 px-5 scrollbar-hide">
-          {categories.slice(0, 4).map(cat => (
-            <button
-              key={cat.id}
-              onClick={() => {
-                setSelectedCategory(cat.id)
-                setActiveTab('category')
-              }}
-              className="flex-shrink-0 bg-gray-50 rounded-2xl px-4 py-3 flex items-center gap-2 active:bg-gray-100 transition-colors"
-            >
-              <span className="text-lg">{cat.icon}</span>
-              <span className="text-sm font-medium text-gray-700">{cat.name}</span>
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* 最近资料 */}
-      <div className="px-5">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold text-gray-900">最近收集</h2>
-          <button className="text-blue-500 text-sm font-medium">查看全部</button>
-        </div>
-
-        <div className="space-y-3">
-          {materials.slice(0, 4).map(material => renderMaterialCard(material))}
-        </div>
-      </div>
-
-      {/* 统计卡片 */}
-      <div className="px-5 mt-6">
-        <div className="bg-gradient-to-br from-gray-50 to-gray-100 rounded-2xl p-5">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-gray-500 text-sm">本周收集</p>
-              <p className="text-3xl font-bold text-gray-900 mt-1">{materials.length} 条</p>
-            </div>
-            <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center shadow-sm">
-              <span className="text-2xl">📊</span>
-            </div>
-          </div>
-          <div className="flex gap-4 mt-4 pt-4 border-t border-gray-200">
-            <div className="flex-1">
-              <p className="text-gray-400 text-xs">文章</p>
-              <p className="text-lg font-semibold text-gray-700">{materials.filter(m => m.category === 'article').length}</p>
-            </div>
-            <div className="flex-1">
-              <p className="text-gray-400 text-xs">灵感</p>
-              <p className="text-lg font-semibold text-gray-700">{materials.filter(m => m.category === 'idea').length}</p>
-            </div>
-            <div className="flex-1">
-              <p className="text-gray-400 text-xs">收藏</p>
-              <p className="text-lg font-semibold text-gray-700">{materials.filter(m => m.isFavorite).length}</p>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  )
-
-  // 渲染分类内容
-  const renderCategoryContent = () => (
-    <div className="flex-1 overflow-auto pb-20">
-      <div className="px-5 pt-12 pb-4">
-        <h1 className="text-[28px] font-semibold text-gray-900 tracking-tight">分类</h1>
-        <p className="text-gray-500 text-sm mt-1">按类型浏览资料</p>
-      </div>
-
-      <div className="px-5 grid grid-cols-2 gap-3">
-        {categories.map(cat => {
-          const count = materials.filter(m => m.category === cat.id).length
-          return (
-            <button
-              key={cat.id}
-              onClick={() => setSelectedCategory(selectedCategory === cat.id ? null : cat.id)}
-              className={cn(
-                "bg-white rounded-2xl p-4 text-left shadow-sm border transition-all active:scale-[0.98]",
-                selectedCategory === cat.id 
-                  ? "border-blue-500 ring-2 ring-blue-500/20" 
-                  : "border-gray-100"
-              )}
-            >
-              <div 
-                className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl mb-3"
-                style={{ backgroundColor: cat.color + '20' }}
-              >
-                {cat.icon}
+                        {material.tags && (
+                          <div className="flex flex-wrap gap-1 pt-1">
+                            {JSON.parse(material.tags).map((tag: string, i: number) => (
+                              <Badge key={i} variant="outline" className="text-xs">
+                                <Tag className="w-2.5 h-2.5 mr-1" />
+                                {tag}
+                              </Badge>
+                            ))}
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  )
+                })}
               </div>
-              <h3 className="font-semibold text-gray-900">{cat.name}</h3>
-              <p className="text-gray-400 text-sm mt-1">{count} 条资料</p>
-            </button>
-          )
-        })}
-      </div>
-
-      {selectedCategory && (
-        <div className="px-5 mt-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold text-gray-900">
-              {categories.find(c => c.id === selectedCategory)?.name}
-            </h2>
-            <button 
-              onClick={() => setSelectedCategory(null)}
-              className="text-blue-500 text-sm"
-            >
-              清除筛选
-            </button>
-          </div>
-          <div className="space-y-3">
-            {filteredMaterials.map(material => renderMaterialCard(material, false))}
-          </div>
-        </div>
-      )}
-    </div>
-  )
-
-  // 渲染搜索内容
-  const renderSearchContent = () => (
-    <div className="flex-1 overflow-auto pb-20">
-      <div className="px-5 pt-12 pb-4">
-        <h1 className="text-[28px] font-semibold text-gray-900 tracking-tight">搜索</h1>
-        <p className="text-gray-500 text-sm mt-1">快速找到你需要的资料</p>
-      </div>
-
-      <div className="px-5 mb-4">
-        <div className="relative">
-          <input
-            type="text"
-            placeholder="搜索标题、内容或标签..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full bg-gray-100 rounded-xl px-4 py-3 pl-10 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
-          />
-          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">🔍</span>
-        </div>
-      </div>
-
-      {/* 热门标签 */}
-      <div className="px-5 mb-6">
-        <h3 className="text-sm font-medium text-gray-500 mb-3">热门标签</h3>
-        <div className="flex flex-wrap gap-2">
-          {['设计', '产品', 'AI', '技术', '方法论'].map(tag => (
-            <button
-              key={tag}
-              onClick={() => setSearchQuery(tag)}
-              className="bg-gray-100 text-gray-700 px-3 py-1.5 rounded-full text-sm active:bg-gray-200"
-            >
-              #{tag}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* 搜索结果 */}
-      {searchQuery && (
-        <div className="px-5">
-          <p className="text-sm text-gray-500 mb-3">
-            找到 {filteredMaterials.length} 条结果
-          </p>
-          <div className="space-y-3">
-            {filteredMaterials.map(material => renderMaterialCard(material))}
-          </div>
-        </div>
-      )}
-    </div>
-  )
-
-  // 渲染个人中心
-  const renderProfileContent = () => (
-    <div className="flex-1 overflow-auto pb-20">
-      <div className="px-5 pt-12 pb-4">
-        <h1 className="text-[28px] font-semibold text-gray-900 tracking-tight">我的</h1>
-      </div>
-
-      {/* 用户卡片 */}
-      <div className="px-5 mb-6">
-        <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-2xl p-5 text-white">
-          <div className="flex items-center gap-4">
-            <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center text-3xl">
-              👤
-            </div>
-            <div>
-              <h2 className="text-xl font-semibold">资料收集达人</h2>
-              <p className="text-blue-100 text-sm">坚持记录第 7 天</p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* 统计 */}
-      <div className="px-5 mb-6">
-        <div className="grid grid-cols-3 gap-3">
-          <div className="bg-white rounded-2xl p-4 text-center shadow-sm border border-gray-100">
-            <p className="text-2xl font-bold text-gray-900">{materials.length}</p>
-            <p className="text-gray-500 text-sm mt-1">总资料</p>
-          </div>
-          <div className="bg-white rounded-2xl p-4 text-center shadow-sm border border-gray-100">
-            <p className="text-2xl font-bold text-gray-900">{materials.filter(m => m.isFavorite).length}</p>
-            <p className="text-gray-500 text-sm mt-1">收藏</p>
-          </div>
-          <div className="bg-white rounded-2xl p-4 text-center shadow-sm border border-gray-100">
-            <p className="text-2xl font-bold text-gray-900">{categories.length}</p>
-            <p className="text-gray-500 text-sm mt-1">分类</p>
-          </div>
-        </div>
-      </div>
-
-      {/* 设置列表 */}
-      <div className="px-5">
-        <div className="bg-white rounded-2xl overflow-hidden shadow-sm border border-gray-100">
-          {[
-            { icon: '🔔', title: '提醒设置', desc: '设置每日整理提醒' },
-            { icon: '☁️', title: '云端同步', desc: '已开启' },
-            { icon: '🎨', title: '主题设置', desc: '跟随系统' },
-            { icon: '📤', title: '导出数据', desc: '' },
-          ].map((item, index) => (
-            <button
-              key={item.title}
-              className={cn(
-                "w-full px-4 py-4 flex items-center gap-3 active:bg-gray-50 text-left",
-                index !== 3 && "border-b border-gray-100"
-              )}
-            >
-              <span className="text-xl">{item.icon}</span>
-              <div className="flex-1">
-                <p className="font-medium text-gray-900">{item.title}</p>
-                {item.desc && <p className="text-gray-400 text-sm">{item.desc}</p>}
-              </div>
-              <span className="text-gray-300">›</span>
-            </button>
-          ))}
-        </div>
-      </div>
-    </div>
-  )
-
-  // 渲染添加弹窗
-  const renderAddSheet = () => (
-    <div 
-      className={cn(
-        "fixed inset-0 z-50 transition-all duration-300",
-        showAddSheet ? "visible" : "invisible"
-      )}
-    >
-      <div 
-        className={cn(
-          "absolute inset-0 bg-black/40 transition-opacity duration-300",
-          showAddSheet ? "opacity-100" : "opacity-0"
-        )}
-        onClick={() => setShowAddSheet(false)}
-      />
-      <div 
-        className={cn(
-          "absolute bottom-0 left-0 right-0 bg-white rounded-t-3xl transition-transform duration-300",
-          showAddSheet ? "translate-y-0" : "translate-y-full"
-        )}
-        style={{ maxHeight: '85vh' }}
-      >
-        {/* 拖动条 */}
-        <div className="flex justify-center pt-3 pb-2">
-          <div className="w-10 h-1 bg-gray-300 rounded-full" />
-        </div>
-
-        <div className="px-5 pb-8">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-xl font-semibold text-gray-900">快速收集</h2>
-            <button 
-              onClick={() => setShowAddSheet(false)}
-              className="text-gray-400 text-2xl"
-            >
-              ✕
-            </button>
-          </div>
-
-          {/* 分类选择 */}
-          <div className="mb-4">
-            <p className="text-sm font-medium text-gray-500 mb-2">选择类型</p>
-            <div className="flex gap-2 overflow-x-auto pb-2">
-              {categories.map(cat => (
-                <button
-                  key={cat.id}
-                  onClick={() => setNewItem({ ...newItem, category: cat.id })}
-                  className={cn(
-                    "flex-shrink-0 px-4 py-2 rounded-full flex items-center gap-2 transition-all",
-                    newItem.category === cat.id
-                      ? "bg-blue-500 text-white"
-                      : "bg-gray-100 text-gray-700"
-                  )}
-                >
-                  <span>{cat.icon}</span>
-                  <span className="text-sm font-medium">{cat.name}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* 标题输入 */}
-          <div className="mb-4">
-            <input
-              type="text"
-              placeholder="标题（必填）"
-              value={newItem.title}
-              onChange={(e) => setNewItem({ ...newItem, title: e.target.value })}
-              className="w-full bg-gray-100 rounded-xl px-4 py-3 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
-            />
-          </div>
-
-          {/* 内容输入 */}
-          <div className="mb-6">
-            <textarea
-              placeholder="内容或备注..."
-              value={newItem.content}
-              onChange={(e) => setNewItem({ ...newItem, content: e.target.value })}
-              rows={4}
-              className="w-full bg-gray-100 rounded-xl px-4 py-3 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50 resize-none"
-            />
-          </div>
-
-          {/* 保存按钮 */}
-          <button
-            onClick={handleAdd}
-            disabled={!newItem.title.trim()}
-            className={cn(
-              "w-full py-4 rounded-xl font-medium transition-all",
-              newItem.title.trim()
-                ? "bg-blue-500 text-white active:bg-blue-600"
-                : "bg-gray-200 text-gray-400"
             )}
-          >
-            保存资料
-          </button>
-        </div>
+          </ScrollArea>
+        </main>
       </div>
-    </div>
-  )
-
-  // 主渲染
-  return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-      {/* iPhone 模拟框架 */}
-      <div className="relative w-full max-w-[390px] h-[844px] bg-white rounded-[50px] shadow-2xl overflow-hidden border-[12px] border-gray-900">
-        {/* 动态岛 */}
-        <div className="absolute top-3 left-1/2 -translate-x-1/2 w-[120px] h-[35px] bg-black rounded-full z-50" />
-        
-        {/* 内容区域 */}
-        <div className="h-full flex flex-col bg-gray-50">
-          {/* 状态栏 */}
-          <div className="h-12 flex items-end justify-between px-8 pb-1 bg-gray-50">
-            <span className="text-sm font-medium text-gray-900">9:41</span>
-            <div className="flex items-center gap-1">
-              <span className="text-sm">📶</span>
-              <span className="text-sm">wifi</span>
-              <span className="text-sm">🔋</span>
-            </div>
-          </div>
-
-          {/* 页面内容 */}
-          {activeTab === 'home' && renderHomeContent()}
-          {activeTab === 'category' && renderCategoryContent()}
-          {activeTab === 'search' && renderSearchContent()}
-          {activeTab === 'profile' && renderProfileContent()}
-
-          {/* 底部导航栏 */}
-          <div className="absolute bottom-0 left-0 right-0 bg-white/80 backdrop-blur-xl border-t border-gray-200">
-            <div className="flex items-center justify-around py-2 pb-6">
-              {navItems.map(item => (
-                <button
-                  key={item.id}
-                  onClick={() => {
-                    if (item.id === 'add') {
-                      setShowAddSheet(true)
-                    } else {
-                      setActiveTab(item.id)
-                    }
-                  }}
-                  className={cn(
-                    "flex flex-col items-center gap-1 min-w-[60px]",
-                    item.id === 'add' && "text-blue-500"
-                  )}
-                >
-                  {item.id === 'add' ? (
-                    <div className="w-12 h-12 bg-blue-500 rounded-full flex items-center justify-center text-white text-2xl shadow-lg shadow-blue-500/30 -mt-4">
-                      +
-                    </div>
-                  ) : (
-                    <>
-                      <span className={cn(
-                        "text-xl",
-                        activeTab === item.id ? "text-blue-500" : "text-gray-400"
-                      )}>
-                        {item.id === 'home' && '🏠'}
-                        {item.id === 'category' && '📁'}
-                        {item.id === 'search' && '🔍'}
-                        {item.id === 'profile' && '👤'}
-                      </span>
-                      <span className={cn(
-                        "text-[10px]",
-                        activeTab === item.id ? "text-blue-500 font-medium" : "text-gray-400"
-                      )}>
-                        {item.label}
-                      </span>
-                    </>
-                  )}
-                </button>
-              ))}
-            </div>
-            {/* Home Indicator */}
-            <div className="flex justify-center pb-2">
-              <div className="w-32 h-1 bg-gray-300 rounded-full" />
-            </div>
-          </div>
-        </div>
-
-        {/* 添加弹窗 */}
-        {renderAddSheet()}
-        
-        {/* 详情弹窗 */}
-        {renderDetailSheet()}
-      </div>
-
-      {/* 功能说明 */}
-      <div className="hidden lg:block absolute left-8 top-1/2 -translate-y-1/2 max-w-[280px]">
-        <h2 className="text-2xl font-bold text-gray-900 mb-4">✨ 极简资料整理</h2>
-        <div className="space-y-3 text-sm text-gray-600">
-          <div className="flex items-start gap-2">
-            <span className="text-blue-500">●</span>
-            <p><strong>一键收集</strong> - 快速保存零散资料</p>
-          </div>
-          <div className="flex items-start gap-2">
-            <span className="text-yellow-500">●</span>
-            <p><strong>智能分类</strong> - 6大类型自动归类</p>
-          </div>
-          <div className="flex items-start gap-2">
-            <span className="text-purple-500">●</span>
-            <p><strong>全文搜索</strong> - 标签、内容快速检索</p>
-          </div>
-          <div className="flex items-start gap-2">
-            <span className="text-green-500">●</span>
-            <p><strong>收藏标记</strong> - 重要资料一目了然</p>
-          </div>
-          <div className="flex items-start gap-2">
-            <span className="text-red-500">●</span>
-            <p><strong>编辑删除</strong> - 随时管理你的资料</p>
-          </div>
-        </div>
-
-        {/* PWA 状态 */}
-        <div className="mt-6 p-4 bg-blue-50 rounded-xl">
-          <p className="text-sm font-medium text-blue-900">PWA 状态</p>
-          <div className="mt-2 space-y-1 text-xs">
-            <p className={isInstalled ? 'text-green-600' : 'text-gray-500'}>
-              {isInstalled ? '✅ 已安装到设备' : '📱 未安装'}
-            </p>
-            {canInstall && !isInstalled && (
-              <button 
-                onClick={install}
-                className="mt-2 w-full bg-blue-500 text-white py-2 rounded-lg text-sm font-medium"
-              >
-                安装到桌面
-              </button>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* 安装提示横幅 */}
-      {canInstall && !isInstalled && showInstallBanner && (
-        <div className="fixed top-0 left-0 right-0 bg-gradient-to-r from-blue-500 to-blue-600 text-white p-4 flex items-center justify-between z-50 shadow-lg">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center">
-              📱
-            </div>
-            <div>
-              <p className="font-medium">安装「资料收集」</p>
-              <p className="text-sm text-blue-100">添加到主屏幕，体验更流畅</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <button 
-              onClick={() => setShowInstallBanner(false)}
-              className="px-3 py-1 text-sm text-blue-100"
-            >
-              稍后
-            </button>
-            <button 
-              onClick={() => {
-                install()
-                setShowInstallBanner(false)
-              }}
-              className="px-4 py-2 bg-white text-blue-500 rounded-lg text-sm font-medium"
-            >
-              安装
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   )
 }
